@@ -26,506 +26,297 @@
 
 package haven;
 
-import java.awt.*;
 import java.util.*;
-
-import haven.automated.AutoRepeatFlowerMenuScript;
-import haven.render.*;
-
+import java.util.function.*;
+import java.awt.Color;
 import java.awt.image.BufferedImage;
-import java.util.List;
 
-import haven.Fuzzy;
-import haven.ItemInfo.AttrCache;
-import haven.res.ui.stackinv.ItemStack;
-import haven.resutil.Curiosity;
-
-import static haven.Inventory.sqsz;
+import haven.render.*;
+import haven.res.ui.tt.q.qbuff.QBuff;
 
 public class WItem extends Widget implements DTarget {
-    public static final Resource missing = Resource.local().loadwait("gfx/invobjs/missing");
+    public static final Resource missing = Resource.local().load("gfx/invobjs/missing");
     public final GItem item;
-    private Resource cspr = null;
-    private Message csdt = Message.nil;
-	private Boolean isNotInStudy = null;
-	public final AttrCache<Pair<String, String>> study = new AttrCache<Pair<String, String>>(this::info, AttrCache.map1(Curiosity.class, curio -> curio::remainingTip));
-	public static final Text.Foundry studyFnd = new Text.Foundry(Text.sans, 9);;
-	private String cachedStudyValue = null;
-	private String cachedTipValue = null;
-	private Tex cachedStudyTex = null;
-	private boolean holdingShift = false;
-	private boolean searchItemColorShiftUp = true;
-	private int searchItemColorValue = 0;
-	public static final Text.Foundry quantityFoundry = new Text.Foundry(Text.dfont, 10);
-	private static final Color quantityColor = new Color(255, 255, 255, 255);
-	public static final Coord TEXT_PADD_BOT = new Coord(1, 2);
-	public final AttrCache<Tex> heurnum = new AttrCache<Tex>(this::info, AttrCache.cache(info -> {
-		String num = ItemInfo.getCount(info);
-		if(num == null) return null;
-		return new TexI(PUtils.strokeImg(quantityFoundry.renderstroked2(num, quantityColor, Color.BLACK)));
-	}));
-
-	public static Color redDurability = new Color(255, 0, 0, 180);
-	public static Color orangeDurability = new Color(255, 153, 0, 180);
-	public static Color yellowDurability = new Color(255, 234, 0, 180);
-	public static Color greenDurability = new Color(0, 255, 4, 180);
-	public final AttrCache<Pair<Double, Color>> wear = new AttrCache<>(this::info, AttrCache.cache(info->{
-		Pair<Integer, Integer> wear = ItemInfo.getWear(info);
-		if(wear == null) return (null);
-		double bar = (float) (wear.b - wear.a) / wear.b;
-		return new Pair<>(bar, Utils.blendcol(bar, redDurability, orangeDurability, yellowDurability, greenDurability));
-	}));
+    private Resource curs;
+    private List<ItemInfo> info = Collections.emptyList();
+    private final Widget contents;
 
     public WItem(GItem item) {
-	super(sqsz);
-	this.item = item;
+        super(item.sz());
+        this.item = item;
+        contents = initcont();
     }
 
-    public void drawmain(GOut g, GSprite spr) {
-	spr.draw(g);
+    private Widget initcont() {
+        if(item.contents == null)
+            return(null);
+        return(add(new ItemContents(this, item.contents)));
     }
 
-    public class ItemTip implements Indir<Tex>, ItemInfo.InfoTip {
-	private final List<ItemInfo> info;
-	private final TexI tex;
+    public class ItemContents extends Widget {
+        public final Widget inv;
+        private final List<WItem> items = new ArrayList<>();
+        private final Consumer<WItem> added;
 
-	public ItemTip(List<ItemInfo> info, BufferedImage img) {
-	    this.info = info;
-	    if(img == null)
-		throw(new Loading());
-	    tex = new TexI(img);
-	}
+        public ItemContents(WItem cont, Widget inv) {
+            super(Coord.z);
+            this.inv = inv;
+            this.added = cont::additem;
+            add(inv, 0, 0);
+            GItem.ContentsWindow wnd = item.contentswnd;
+            if(wnd != null) {
+                wnd.suppress();
+                wnd.hide();
+            }
+        }
 
-	public GItem item() {return(item);}
-	public List<ItemInfo> info() {return(info);}
-	public Tex get() {return(tex);}
+        private void reset() {
+            items.clear();
+            for(Widget ch = inv.child; ch != null; ch = ch.next) {
+                if(ch instanceof WItem)
+                    items.add((WItem)ch);
+            }
+            resize(inv.sz);
+        }
+
+        public void addchild(Widget child, Object... args) {
+            inv.addchild(child, args);
+            if(child instanceof WItem) {
+                WItem itm = (WItem)child;
+                items.add(itm);
+                added.accept(itm);
+            }
+            resize(inv.sz);
+        }
+
+        public void cdestroy(Widget ch) {
+            inv.cdestroy(ch);
+            if(ch instanceof WItem)
+                items.remove(ch);
+            resize(inv.sz);
+        }
+
+        public void tick(double dt) {
+            if(inv.childseq != item.lastcontseq) {
+                reset();
+                item.lastcontseq = inv.childseq;
+            }
+            super.tick(dt);
+        }
     }
 
-    public class ShortTip extends ItemTip {
-	public ShortTip(List<ItemInfo> info) {super(info, ItemInfo.shorttip(info));}
+    public void additem(WItem itm) {
+        synchronized(itm) {
+            itm.info = null;
+        }
     }
 
-    public class LongTip extends ItemTip {
-	public LongTip(List<ItemInfo> info) {super(info, ItemInfo.longtip(info));}
+    public class CustomFlowerMenu extends FlowerMenu {
+        private final WItem parentItem;
+
+        public CustomFlowerMenu(WItem parent, String... options) {
+            super(parent, options);
+            this.parentItem = parent;
+            Petal[] newOpts = Arrays.copyOf(opts, opts.length + 1);
+            newOpts[opts.length] = new Petal("Info", opts.length);
+            opts = newOpts;
+        }
+
+        @Override
+        public void choose(Petal opt) {
+            if(opt != null) {
+                if("Info".equals(opt.name)) {
+                    parentItem.showWikiInfo();
+                    destroy();
+                } else {
+                    super.choose(opt);
+                }
+            } else {
+                destroy();
+            }
+        }
     }
 
-    private double hoverstart;
-    private ItemTip shorttip = null, longtip = null;
-    private List<ItemInfo> ttinfo = null;
-    public Object tooltip(Coord c, Widget prev) {
-	double now = Utils.rtime();
-//	if(prev == this) {
-//	} else if(prev instanceof WItem) {
-//	    double ps = ((WItem)prev).hoverstart;
-//	    if(now - ps < 1.0)
-//		hoverstart = now;
-//	    else
-//		hoverstart = ps;
-//	} else {
-//	    hoverstart = now;
-//	}
-	if (prev != this)
-		ttinfo = null;
-	try {
-	    List<ItemInfo> info = item.info();
-	    if(info.size() < 1)
-		return(null);
-	    if(info != ttinfo) {
-		shorttip = longtip = null;
-		ttinfo = info;
-	    }
-//	    if(now - hoverstart < 1.0) {
-//		if(shorttip == null)
-//		    shorttip = new ShortTip(info);
-//		return(shorttip);
-//	    } else {
-		if (ui.modshift && !holdingShift) {
-			holdingShift = true;
-			longtip = null;
-		}
-		if (!ui.modshift && holdingShift) {
-			holdingShift = false;
-			longtip = null;
-		}
-		if(longtip == null)
-		    longtip = new LongTip(info);
-		return(longtip);
-//	    }
-	} catch(Loading e) {
-	    return("...");
-	}
-    }
-
-    private List<ItemInfo> info() {return(item.info());}
-    public final AttrCache<Pipe.Op> rstate = new AttrCache<>(this::info, info -> {
-	    ArrayList<GItem.RStateInfo> ols = new ArrayList<>();
-	    for(ItemInfo inf : info) {
-		if(inf instanceof GItem.RStateInfo)
-		    ols.add((GItem.RStateInfo)inf);
-	    }
-	    if(ols.size() == 0)
-		return(() -> null);
-	    if(ols.size() == 1) {
-		Pipe.Op op = ols.get(0).rstate();
-		return(() -> op);
-	    }
-	    Pipe.Op[] ops = new Pipe.Op[ols.size()];
-	    for(int i = 0; i < ops.length; i++)
-		ops[i] = ols.get(0).rstate();
-	    Pipe.Op cmp = Pipe.Op.compose(ops);
-	    return(() -> cmp);
-	});
-    public AttrCache<GItem.InfoOverlay<?>[]> itemols = new AttrCache<>(this::info, info -> {
-	    ArrayList<GItem.InfoOverlay<?>> buf = new ArrayList<>();
-	    for(ItemInfo inf : info) {
-		if(inf instanceof GItem.OverlayInfo)
-		    buf.add(GItem.InfoOverlay.create((GItem.OverlayInfo<?>)inf));
-	    }
-	    GItem.InfoOverlay<?>[] ret = buf.toArray(new GItem.InfoOverlay<?>[0]);
-	    return(() -> ret);
-	});
-    public final AttrCache<Double> itemmeter = new AttrCache<>(this::info, AttrCache.map1(GItem.MeterInfo.class, minf -> minf::meter));
-
-    private Widget contparent() {
-	/* XXX: This is a bit weird, but I'm not sure what the alternative is... */
-	Widget cont = getparent(GameUI.class);
-	return((cont == null) ? cont = ui.root : cont);
-    }
-
-    private GSprite lspr = null;
-    private Widget lcont = null;
     public void tick(double dt) {
-	/* XXX: This is ugly and there should be a better way to
-	 * ensure the resizing happens as it should, but I can't think
-	 * of one yet. */
-	GSprite spr = item.spr();
-	if((spr != null) && (spr != lspr)) {
-	    Coord sz = new Coord(spr.sz());
-	    if((sz.x % sqsz.x) != 0)
-		sz.x = sqsz.x * ((sz.x / sqsz.x) + 1);
-	    if((sz.y % sqsz.y) != 0)
-		sz.y = sqsz.y * ((sz.y / sqsz.y) + 1);
-	    resize(sz);
-	    lspr = spr;
-	}
-	if (isNotInStudy == null)
-		isNotInStudy = parentWindow() != null && !parentWindow().cap.equals("Character Sheet");
+        super.tick(dt);
+        if(item.contents != null) {
+            if(contents == null) {
+                add(new ItemContents(this, item.contents));
+            }
+        } else {
+            if(contents != null) {
+                contents.destroy();
+            }
+        }
+    }
+
+    private static final Resource qcursor = Resource.local().load("ui/qcursor");
+    public void drawmain(GOut g, GSprite spr) {
+        spr.draw(g);
+        QBuff qual = item.getQBuff();
+        if(qual != null) {
+            if(qual.quality() >= 0) {
+                Tex tex = null;
+                if(qual.quality() >= 100)
+                    tex = qual.qtexBig();
+                if(tex == null)
+                    tex = qual.qtex();
+                g.image(tex, Coord.z);
+            }
+            curs = qcursor;
+        } else {
+            curs = null;
+        }
     }
 
     public void draw(GOut g) {
-	GSprite spr = item.spr();
-	if(spr != null) {
-	    Coord sz = spr.sz();
-	    g.defstate();
-	    if(rstate.get() != null)
-		g.usestate(rstate.get());
-		String itemName = item.getname().toLowerCase();
-		String searchKeyword = InventorySearchWindow.inventorySearchString.toLowerCase();
-		if (searchKeyword.length() > 1) {
-			if (Fuzzy.fuzzyContains(itemName, searchKeyword)) {
-				int fps = GLPanel.Loop.fps > 0 ? GLPanel.Loop.fps : 1;
-				int colorShiftSpeed = 800/fps;
-				if (searchItemColorShiftUp) {
-					if (searchItemColorValue + colorShiftSpeed <= 255) {
-						searchItemColorValue += colorShiftSpeed;
-					} else {
-						searchItemColorShiftUp = false;
-						searchItemColorValue = 255;
-					}
-				} else {
-					if (searchItemColorValue - colorShiftSpeed >= 0){
-						searchItemColorValue -= colorShiftSpeed;
-					} else {
-						searchItemColorShiftUp = true;
-						searchItemColorValue = 0;
-					}
-				}
-				g.usestate(new ColorMask(new Color(searchItemColorValue, searchItemColorValue, searchItemColorValue, searchItemColorValue)));
-			}
-		} else {
-			if(olcol.get() != null){
-				g.usestate(new ColorMask(olcol.get()));
-			}
-		}
-	    drawmain(g, spr);
-	    g.defstate();
-	    GItem.InfoOverlay<?>[] ols = itemols.get();
-	    if(ols != null) {
-		for (int i = ols.length - 1; i >= 0; i--) { // ND: Reversed the order in which overlays are drawn, so the quality stays above the level bar (container liquid meter)
-			GItem.InfoOverlay<?> overlay = ols[i];
-			overlay.draw(g);
-		}
-	    }
-		try {
-			for (ItemInfo info : item.info()) {
-				if (info instanceof ItemInfo.AdHoc) {
-					ItemInfo.AdHoc ah = (ItemInfo.AdHoc) info;
-					if (ah.str.text.equals("Well mined")) {
-						drawwellmined(g);
-					} else if (ah.str.text.equals("Black-truffled")) {
-						drawadhocicon(g, "gfx/invobjs/herbs/truffle-black", 18);
-					} else if (ah.str.text.equals("White-truffled")) {
-						drawadhocicon(g, "gfx/invobjs/herbs/truffle-white", 9);
-					} else if (ah.str.text.equals("Peppered")) {
-						drawadhocicon(g, "gfx/invobjs/pepper", 0);
-					}
-				}
-			}
-		} catch (Exception e) {
-		}
-		drawnum(g, sz);
-		if (isNotInStudy != null && isNotInStudy)
-			drawCircleProgress(g, sz);
-		else
-			drawTimeProgress(g, sz);
-		if (item.stackQualityTex != null && OptWnd.showQualityDisplayCheckBox.a) {
-			g.aimage(item.stackQualityTex, new Coord(g.sz().x, 0), 0.95, 0.2);
-		}
-		drawDurabilityBars(g, sz);
-	} else {
-	    g.image(missing.layer(Resource.imgc).tex(), Coord.z, sz);
-	}
+        GSprite spr = item.spr();
+        if(spr != null) {
+            g.defstate();
+            drawmain(g, spr);
+            g.defstate();
+            if(item.num >= 0) {
+                g.aimage(GItem.NumberInfo.numrenderStroked(item.num, Color.WHITE, true), sz, 1, 1);
+            }
+            if(item.meter > 0) {
+                double lastMeterUpdate = (System.currentTimeMillis() - item.meterUpdated) / 1000.0;
+                double meterFadeoutTime = OptWnd.itemMeterFadeoutTimeSlider.val;
+                if(lastMeterUpdate < meterFadeoutTime || meterFadeoutTime == 0) {
+                    double a = item.meter / 100.0;
+                    if(lastMeterUpdate >= 0 && meterFadeoutTime > 0) {
+                        double fade = Math.max(0, (meterFadeoutTime - lastMeterUpdate) / meterFadeoutTime);
+                        g.chcolor(255, 255, 255, (int) (255 * fade));
+                    }
+                    double dx = sz.x * a;
+                    g.chcolor(0, 0, 0, 96);
+                    g.frect(new Coord(0, sz.y - 3), new Coord((int) dx + 1, 3));
+                    g.chcolor(255 - (int) (a * 255), (int) (a * 255), 0, 128);
+                    g.frect(new Coord(0, sz.y - 2), new Coord((int) dx, 2));
+                    g.chcolor();
+                }
+            }
+            if(item.studytime > 0) {
+                double m = item.studytime / (100.0 * 3600);
+                g.chcolor(0, 0, 0, 96);
+                g.frect(new Coord(0, 0), new Coord((int) (sz.x * m) + 1, 3));
+                g.chcolor(255 - (int) (m * 255), (int) (m * 255), 0, 128);
+                g.frect(new Coord(0, 1), new Coord((int) (sz.x * m), 2));
+                g.chcolor();
+            }
+        } else {
+            g.image(missing, Coord.z, sz);
+        }
     }
 
     public boolean mousedown(MouseDownEvent ev) {
-	boolean inv = parent instanceof Inventory;
-	if(ev.b == 1) {
-		if (OptWnd.useImprovedInventoryTransferControlsCheckBox.a && ui.modmeta && !ui.modctrl) {
-			if (inv) {
-				wdgmsg("transfer-ordered", item, false);
-				return true;
-			}
-		}
-	    if(ui.modshift) {
-		int n = ui.modctrl ? -1 : 1;
-		item.wdgmsg("transfer", ev.c, n);
-	    } else if(ui.modctrl) {
-		int n = ui.modmeta ? -1 : 1;
-		item.wdgmsg("drop", ev.c, n);
-	    } else {
-		item.wdgmsg("take", ev.c);
-	    }
-	    return(true);
-	} else if(ev.b == 3) {
-		if (OptWnd.useImprovedInventoryTransferControlsCheckBox.a && ui.modmeta && !ui.modctrl) {
-			if (inv) {
-				wdgmsg("transfer-ordered", item, true);
-				return true;
-			}
-		}
-		if (ui.modctrl && OptWnd.autoSelect1stFlowerMenuCheckBox.a && !ui.modshift && !ui.modmeta) {
-			String itemname = item.getname();
-			int option = 0;
-			if (itemname.equals("Head of Lettuce")) { // ND: Don't eat it, rather split it.
-				option = 1;
-			}
-			item.wdgmsg("iact", ev.c, ui.modflags());
-			ui.rcvr.rcvmsg(ui.lastWidgetID + 1, "cl", option, 0);
-		}
-		if(ui.modctrl && ui.modshift && OptWnd.autoRepeatFlowerMenuCheckBox.a){
-			if (!(item != null && item.contents != null)) { // ND: Ctrl+Shift on stack items splits them, so ignore them.
-				try {
-					if (ui.gui.autoRepeatFlowerMenuScriptThread == null) {
-						ui.gui.autoRepeatFlowerMenuScriptThread = new Thread(new AutoRepeatFlowerMenuScript(ui.gui, this.item.getres().name), "autoRepeatFlowerMenu");
-						ui.gui.autoRepeatFlowerMenuScriptThread.start();
-					} else {
-						ui.gui.autoRepeatFlowerMenuScriptThread.interrupt();
-						ui.gui.autoRepeatFlowerMenuScriptThread = null;
-						ui.gui.autoRepeatFlowerMenuScriptThread = new Thread(new AutoRepeatFlowerMenuScript(ui.gui, this.item.getres().name), "autoRepeatFlowerMenu");
-						ui.gui.autoRepeatFlowerMenuScriptThread.start();
-					}
-				} catch (Loading ignored) {
-				}
-			}
-		}
-	    item.wdgmsg("iact", ev.c, ui.modflags());
-	    return(true);
-	}
-	return(super.mousedown(ev));
+        boolean inv = parent instanceof Inventory;
+        if(ev.b == 1) {
+            if(OptWnd.useImprovedInventoryTransferControlsCheckBox.a && ui.modmeta && !ui.modctrl) {
+                if(inv) {
+                    wdgmsg("transfer-ordered", item, false);
+                    return true;
+                }
+            }
+            if(ui.modshift) {
+                int n = ui.modctrl ? -1 : 1;
+                item.wdgmsg("transfer", ev.c, n);
+            } else if(ui.modctrl) {
+                int n = ui.modmeta ? -1 : 1;
+                item.wdgmsg("drop", ev.c, n);
+            } else {
+                item.wdgmsg("take", ev.c);
+            }
+            return true;
+        } else if(ev.b == 3) {
+            if(OptWnd.useImprovedInventoryTransferControlsCheckBox.a && ui.modmeta && !ui.modctrl) {
+                if(inv) {
+                    wdgmsg("transfer-ordered", item, true);
+                    return true;
+                }
+            }
+            item.wdgmsg("iact", ev.c, ui.modflags(), this);
+
+            if(ui.modctrl && OptWnd.autoSelect1stFlowerMenuCheckBox.a && !ui.modshift && !ui.modmeta) {
+                String itemname = item.getname();
+                int option = 0;
+                if(itemname.equals("Head of Lettuce")) {
+                    option = 1;
+                }
+                item.wdgmsg("iact", ev.c, ui.modflags());
+                ui.rcvr.rcvmsg(ui.lastWidgetID + 1, "cl", option, 0);
+            }
+            if(ui.modctrl && ui.modshift && OptWnd.autoRepeatFlowerMenuCheckBox.a) {
+                if(!(item != null && item.contents != null)) {
+                    try {
+                        if(ui.gui.autoRepeatFlowerMenuScriptThread == null) {
+                            ui.gui.autoRepeatFlowerMenuScriptThread = new Thread(new AutoRepeatFlowerMenuScript(ui.gui, this.item.getres().name), "autoRepeatFlowerMenu");
+                            ui.gui.autoRepeatFlowerMenuScriptThread.start();
+                        } else {
+                            ui.gui.autoRepeatFlowerMenuScriptThread.interrupt();
+                            ui.gui.autoRepeatFlowerMenuScriptThread = null;
+                            ui.gui.autoRepeatFlowerMenuScriptThread = new Thread(new AutoRepeatFlowerMenuScript(ui.gui, this.item.getres().name), "autoRepeatFlowerMenu");
+                            ui.gui.autoRepeatFlowerMenuScriptThread.start();
+                        }
+                    } catch(Loading ignored) {}
+                }
+            }
+            return true;
+        }
+        return super.mousedown(ev);
     }
 
-    public boolean drop(Coord cc, Coord ul) {
-	return(false);
+    public void drawsel(GOut g) {
+        g.chcolor(255, 255, 0, 128);
+        g.frect(Coord.z, sz);
+        g.chcolor();
     }
 
-    public boolean iteminteract(Coord cc, Coord ul) {
-	item.wdgmsg("itemact", ui.modflags());
-	return(true);
+    public boolean drop(WItem target, Coord cc) {
+        return false;
     }
 
-    public boolean mousehover(MouseHoverEvent ev, boolean on) {
-	if(on && (item.contents != null && (!OptWnd.showHoverInventoriesWhenHoldingShiftCheckBox.a || ui.modshift))) {
-	    item.hovering(this);
-	    return(true);
-	}
-	return(super.mousehover(ev, on));
+    public boolean iteminteract(WItem target, Coord cc) {
+        return false;
     }
 
-	public Window parentWindow() {
-		Widget parent = this.parent;
-		while (parent != null) {
-			if (parent instanceof Window)
-				return (Window) parent;
-			parent = parent.parent;
-		}
-		return null;
-	}
+    public Object tooltip(Coord c, Widget prev) {
+        try {
+            if(prev != this)
+                info = item.info();
+            if(!info.isEmpty())
+                return info;
+        } catch(Loading l) {}
+        return null;
+    }
 
-	public double meter() {
-		Double meter = (item.meter > 0) ? (Double) (item.meter / 100.0) : itemmeter.get();
-		return meter == null ? 0 : meter;
-	}
+    private String formatWikiName(String itemName) {
+        StringBuilder wikiName = new StringBuilder();
+        for(int i = 0; i < itemName.length(); i++) {
+            char c = itemName.charAt(i);
+            if(Character.isUpperCase(c) && i > 0) {
+                wikiName.append('_');
+            }
+            wikiName.append(c);
+        }
+        return wikiName.toString().replace(' ', '_');
+    }
 
-	private void drawCircleProgress(GOut g, Coord sz) {
-		double meter = meter();
-		if(meter > 0) {
-			g.chcolor(255, 255, 255, 64);
-			Coord half = sz.div(2);
-			g.prect(half, half.inv(), half, meter * Math.PI * 2);
-			g.chcolor();
-			Tex tex = Text.renderstroked(String.format("%d%%", Math.round(100 * meter))).tex();
-			g.aimage(tex, sz.div(2), 0.5, 0.5);
-			tex.dispose();
-		}
-	}
+    public void showWikiInfo() {
+        String itemName = item.getname();
+        String wikiName = formatWikiName(itemName);
+        String url = "https://ringofbrodgar.com/wiki/" + wikiName;
+        try {
+            java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+        } catch(Exception e) {
+            ui.cons.out.println("Error opening wiki: " + e.getMessage());
+        }
+    }
 
-	private void drawTimeProgress(GOut g, Coord sz) {
-		double meter = meter();
-		if(meter > 0) {
-			Tex studyTime = getStudyTime();
-			if(studyTime == null) {
-				Tex tex = Text.renderstroked(String.format("%d%%", Math.round(100 * meter))).tex();
-				g.aimage(tex, sz.div(2), 0.5, 0.5);
-				tex.dispose();
-			}
-			if(studyTime != null) {
-				g.chcolor();
-				g.aimage(studyTime, new Coord(sz.x / 2, sz.y), 0.5, 0.9);
-			}
-		}
-	}
-
-	private Tex getStudyTime() {
-		Pair<String, String> data = study.get();
-		String value = data == null ? null : data.a;
-		String tip = data == null ? null : data.b;
-		if(!Objects.equals(tip, cachedTipValue)) {
-			cachedTipValue = tip;
-			longtip = null;
-		}
-		if(value != null) {
-			if(!Objects.equals(value, cachedStudyValue)) {
-				if(cachedStudyTex != null) {
-					cachedStudyTex.dispose();
-					cachedStudyTex = null;
-				}
-			}
-
-			if(cachedStudyTex == null) {
-				cachedStudyValue = value;
-				if (!value.contains("h")) // ND: When the curio has less than 1 hour left to study (it only shows the minutes)
-					cachedStudyTex = PUtils.strokeTex(Text.renderstroked(value, Color.GREEN, Color.BLACK, studyFnd));
-				else
-					cachedStudyTex = PUtils.strokeTex(Text.renderstroked(value, Color.WHITE, Color.BLACK, studyFnd));
-			}
-			return cachedStudyTex;
-		}
-		return null;
-	}
-
-	public void reloadItemOls(){
-		itemols = new AttrCache<>(this::info, info -> {
-			ArrayList<GItem.InfoOverlay<?>> buf = new ArrayList<>();
-			for(ItemInfo inf : info) {
-				if(inf instanceof GItem.OverlayInfo)
-					buf.add(GItem.InfoOverlay.create((GItem.OverlayInfo<?>)inf));
-			}
-			GItem.InfoOverlay<?>[] ret = buf.toArray(new GItem.InfoOverlay<?>[0]);
-			return(() -> ret);
-		});
-		if (item != null && item.parent != null) {
-			if (item.parent instanceof ItemStack) {
-				ItemStack itemStack = (ItemStack) item.parent;
-				if (itemStack.parent != null) {
-					GItem stackItem = ((GItem.ContentsWindow) itemStack.parent).cont;
-					if (stackItem != null) {
-						stackItem.stackQualityTex = null;
-						itemStack.stackQualityNeedsUpdate = true;
-					}
-				}
-			}
-		}
-	}
-
-	private void drawDurabilityBars(GOut g, Coord sz) {
-		if(true) {
-			Pair<Double, Color> wear = this.wear.get();
-			if(wear != null) {
-				int h = (int) (sz.y * wear.a);
-				g.chcolor(Color.BLACK);
-				g.frect(new Coord(UI.scale(1), 0), new Coord(UI.scale(5), sz.y));
-				g.chcolor(wear.b);
-				g.frect(new Coord(UI.scale(2), sz.y - h + UI.scale(1)), new Coord(UI.scale(3), h - UI.scale(2)));
-				g.chcolor();
-			}
-		}
-	}
-
-	public final AttrCache<Color> olcol = new AttrCache<>(this::info, info -> {
-		ArrayList<GItem.ColorInfo> ols = new ArrayList<>();
-		for(ItemInfo inf : info) {
-			if(inf instanceof GItem.ColorInfo)
-				ols.add((GItem.ColorInfo)inf);
-		}
-		if(ols.size() == 0)
-			return(() -> null);
-		if(ols.size() == 1)
-			return(ols.get(0)::olcol);
-		ols.trimToSize();
-		return(() -> {
-			Color ret = null;
-			for(GItem.ColorInfo ci : ols) {
-				Color c = ci.olcol();
-				if(c != null)
-					ret = (ret == null) ? c : Utils.preblend(ret, c);
-			}
-			return(ret);
-		});
-	});
-
-	private void drawwellmined(GOut g) {
-		g.chcolor(new Color(203, 183, 94));
-		g.fcircle(sz.x-UI.scale(4),sz.y-UI.scale(4), UI.scale(4),10);
-		g.chcolor();
-	}
-
-	private void drawadhocicon(GOut g, String resname, int offset) {
-		Resource res = Resource.remote().load(resname).get();
-		BufferedImage bufferedimage = res.layer(Resource.imgc).img;
-		g.image(bufferedimage, new Coord(UI.scale(offset), sz.y-UI.scale(16)), new Coord(UI.scale(16),UI.scale(16)));
-	}
-
-	private void drawnum(GOut g, Coord sz) {
-		Tex tex;
-		if(item.num >= 0) {
-			tex = PUtils.strokeTex(quantityFoundry.renderstroked2(Integer.toString(item.num), quantityColor, Color.BLACK));
-		} else {
-			tex = chainattr(heurnum);
-		}
-
-		if(tex != null) {
-			g.aimage(tex, TEXT_PADD_BOT.add(sz), 1, 1);
-		}
-	}
-
-	@SafeVarargs //Ender: actually, method just assumes you'll feed it correctly typed var args
-	private static Tex chainattr(AttrCache<Tex> ...attrs){
-		for(AttrCache<Tex> attr : attrs){
-			Tex tex = attr.get();
-			if(tex != null){
-				return tex;
-			}
-		}
-		return null;
-	}
+    public void dispose() {
+        GItem.ContentsWindow wnd = item.contentswnd;
+        if(wnd != null) {
+            wnd.suppress();
+            wnd.hide();
+        }
+    }
 }
