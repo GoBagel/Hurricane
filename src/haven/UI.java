@@ -72,7 +72,7 @@ public class UI {
     public int lastWidgetID = 0;
     public static Tex province = null;
     public static Tex realm = null;
-    private transient WItem lastInteractSource = null; // Store WItem source for interact
+    private transient WItem lastInteractSource = null;
 
     {
         lastevent = lasttick = Utils.rtime();
@@ -1114,26 +1114,52 @@ public class UI {
 
     public void interact(GItem item, Coord c, int modflags, WItem source) {
         lastInteractSource = source;
-        sess.msg("iact", item.wdgid(), c, modflags);
+        MessageBuf msg = new MessageBuf();
+        msg.addint16(0); // Type 0 for iact
+        msg.addint32(item.wdgid());
+        msg.addcoord(c);
+        msg.addint32(modflags);
+        sess.send(msg);
     }
 
     public void xfer(GItem item, Coord c, int count) {
-        sess.msg("transfer", item.wdgid(), c, count);
+        MessageBuf msg = new MessageBuf();
+        msg.addint16(1); // Type 1 for transfer
+        msg.addint32(item.wdgid());
+        msg.addcoord(c);
+        msg.addint32(count);
+        sess.send(msg);
     }
 
     public void drop(GItem item, Coord c, int count) {
-        sess.msg("drop", item.wdgid(), c, count);
+        MessageBuf msg = new MessageBuf();
+        msg.addint16(2); // Type 2 for drop
+        msg.addint32(item.wdgid());
+        msg.addcoord(c);
+        msg.addint32(count);
+        sess.send(msg);
     }
 
     public void take(GItem item, Coord c) {
-        sess.msg("take", item.wdgid(), c);
+        MessageBuf msg = new MessageBuf();
+        msg.addint16(3); // Type 3 for take
+        msg.addint32(item.wdgid());
+        msg.addcoord(c);
+        sess.send(msg);
     }
 
     public void itemact(GItem item, int modflags) {
-        sess.msg("itemact", item.wdgid(), modflags);
+        MessageBuf msg = new MessageBuf();
+        msg.addint16(4); // Type 4 for itemact
+        msg.addint32(item.wdgid());
+        msg.addint32(modflags);
+        sess.send(msg);
     }
 
     public void ttupdate(GItem item) {
-        sess.msg("ttupdate", item.wdgid());
+        MessageBuf msg = new MessageBuf();
+        msg.addint16(5); // Type 5 for ttupdate
+        msg.addint32(item.wdgid());
+        sess.send(msg);
     }
 }

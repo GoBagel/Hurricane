@@ -1,48 +1,20 @@
-/*
- *  This file is part of the Haven & Hearth game client.
- *  Copyright (C) 2009 Fredrik Tolf <fredrik@dolda2000.com>, and
- *                     Björn Johannessen <johannessen.bjorn@gmail.com>
- *
- *  Redistribution and/or modification of this file is subject to the
- *  terms of the GNU Lesser General Public License, version 3, as
- *  published by the Free Software Foundation.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  Other parts of this source tree adhere to other copying
- *  rights. Please see the file `COPYING' in the root directory of the
- *  source tree for details.
- *
- *  A copy the GNU Lesser General Public License is distributed along
- *  with the source tree of which this file is a part in the file
- *  `doc/LPGL-3'. If it is missing for any reason, please see the Free
- *  Software Foundation's website at <http://www.fsf.org/>, or write
- *  to the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
- *  Boston, MA 02111-1307 USA
- */
-
 package haven;
 
 import java.util.*;
-import java.util.function.*;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 
-import haven.render.*;
-import haven.res.ui.tt.q.qbuff.QBuff;
+import haven.automated.AutoRepeatFlowerMenuScript;
 
 public class WItem extends Widget implements DTarget {
-    public static final Resource missing = Resource.local().load("gfx/invobjs/missing");
+    public static final Resource.Named missing = Resource.local().load("gfx/invobjs/missing");
     public final GItem item;
     private Resource curs;
     private List<ItemInfo> info = Collections.emptyList();
     private final Widget contents;
 
     public WItem(GItem item) {
-        super(item.sz());
+        super(item.spr() != null ? item.spr().sz() : Inventory.sqsz);
         this.item = item;
         contents = initcont();
     }
@@ -65,7 +37,6 @@ public class WItem extends Widget implements DTarget {
             add(inv, 0, 0);
             GItem.ContentsWindow wnd = item.contentswnd;
             if(wnd != null) {
-                wnd.suppress();
                 wnd.hide();
             }
         }
@@ -97,11 +68,9 @@ public class WItem extends Widget implements DTarget {
         }
 
         public void tick(double dt) {
-            if(inv.childseq != item.lastcontseq) {
-                reset();
-                item.lastcontseq = inv.childseq;
-            }
             super.tick(dt);
+            if(contents != null)
+                contents.tick(dt);
         }
     }
 
@@ -150,17 +119,13 @@ public class WItem extends Widget implements DTarget {
         }
     }
 
-    private static final Resource qcursor = Resource.local().load("ui/qcursor");
+    private static final Resource.Named qcursor = Resource.local().load("ui/qcursor");
     public void drawmain(GOut g, GSprite spr) {
         spr.draw(g);
         QBuff qual = item.getQBuff();
         if(qual != null) {
-            if(qual.quality() >= 0) {
-                Tex tex = null;
-                if(qual.quality() >= 100)
-                    tex = qual.qtexBig();
-                if(tex == null)
-                    tex = qual.qtex();
+            if(qual.q >= 0) {
+                Tex tex = qual.qtex;
                 g.image(tex, Coord.z);
             }
             curs = qcursor;
@@ -176,7 +141,7 @@ public class WItem extends Widget implements DTarget {
             drawmain(g, spr);
             g.defstate();
             if(item.num >= 0) {
-                g.aimage(GItem.NumberInfo.numrenderStroked(item.num, Color.WHITE, true), sz, 1, 1);
+                g.aimage(new TexI(GItem.NumberInfo.numrenderStroked(item.num, Color.WHITE, true)), sz, 1, 1);
             }
             if(item.meter > 0) {
                 double lastMeterUpdate = (System.currentTimeMillis() - item.meterUpdated) / 1000.0;
@@ -185,26 +150,26 @@ public class WItem extends Widget implements DTarget {
                     double a = item.meter / 100.0;
                     if(lastMeterUpdate >= 0 && meterFadeoutTime > 0) {
                         double fade = Math.max(0, (meterFadeoutTime - lastMeterUpdate) / meterFadeoutTime);
-                        g.chcolor(255, 255, 255, (int) (255 * fade));
+                        g.chcolor(255, 255, 255, (int)(255 * fade));
                     }
                     double dx = sz.x * a;
                     g.chcolor(0, 0, 0, 96);
-                    g.frect(new Coord(0, sz.y - 3), new Coord((int) dx + 1, 3));
-                    g.chcolor(255 - (int) (a * 255), (int) (a * 255), 0, 128);
-                    g.frect(new Coord(0, sz.y - 2), new Coord((int) dx, 2));
+                    g.frect(new Coord(0, sz.y - 3), new Coord((int)dx + 1, 3));
+                    g.chcolor(255 - (int)(a * 255), (int)(a * 255), 0, 128);
+                    g.frect(new Coord(0, sz.y - 2), new Coord((int)dx, 2));
                     g.chcolor();
                 }
             }
             if(item.studytime > 0) {
                 double m = item.studytime / (100.0 * 3600);
                 g.chcolor(0, 0, 0, 96);
-                g.frect(new Coord(0, 0), new Coord((int) (sz.x * m) + 1, 3));
-                g.chcolor(255 - (int) (m * 255), (int) (m * 255), 0, 128);
-                g.frect(new Coord(0, 1), new Coord((int) (sz.x * m), 2));
+                g.frect(new Coord(0, 0), new Coord((int)(sz.x * m) + 1, 3));
+                g.chcolor(255 - (int)(m * 255), (int)(m * 255), 0, 128);
+                g.frect(new Coord(0, 1), new Coord((int)(sz.x * m), 2));
                 g.chcolor();
             }
         } else {
-            g.image(missing, Coord.z, sz);
+            g.image(missing.loadwait().layer(Resource.imgc).tex(), Coord.z, sz);
         }
     }
 
@@ -315,7 +280,6 @@ public class WItem extends Widget implements DTarget {
     public void dispose() {
         GItem.ContentsWindow wnd = item.contentswnd;
         if(wnd != null) {
-            wnd.suppress();
             wnd.hide();
         }
     }

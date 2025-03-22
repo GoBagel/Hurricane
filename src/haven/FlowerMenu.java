@@ -75,8 +75,6 @@ public class FlowerMenu extends Widget {
         public Area ta(double a, double r) { return ta(Coord.sc(a, r)); }
     }
 
-    private static double nxf(double a) { return (-1.8633 * a * a + 2.8633 * a); }
-
     public class Opening extends NormAnim {
         Opening() { super(0.0); }
         public void ntick(double s) {
@@ -128,8 +126,23 @@ public class FlowerMenu extends Widget {
         }
     }
 
-    private void organize(Petal[] opts) { /* Unchanged */ }
-    private void organizeVertical(Petal[] options) { /* Unchanged */ }
+    private static double nxf(double a) { return (-1.8633 * a * a + 2.8633 * a); }
+
+    private void organize(Petal[] opts) {
+        int n = opts.length;
+        for (int i = 0; i < n; i++) {
+            double ta = (2 * PI * i) / n - PI / 2;
+            opts[i].ta = ta;
+            opts[i].tr = 80;
+            opts[i].move(ta, 0);
+        }
+    }
+
+    private void organizeVertical(Petal[] options) {
+        for (int i = 0; i < options.length; i++) {
+            options[i].move(new Coord(0, i * ph));
+        }
+    }
 
     public FlowerMenu(WItem source, String... options) {
         super(Coord.z);
@@ -146,18 +159,61 @@ public class FlowerMenu extends Widget {
             add(opts[i] = new Petal(this.options[i], i));
             opts[i].num = i;
         }
+        if (this.options.length > 1)
+            organize(opts);
+        else
+            organizeVertical(opts);
     }
 
-    protected void added() { /* Unchanged */ }
-    public boolean mousedown(MouseDownEvent ev) { /* Unchanged */ }
-    public void uimsg(String msg, Object... args) { /* Unchanged */ }
+    protected void added() {
+        if (c.isZero())
+            c = parent.sz.div(2).sub(sz.div(2));
+        mg = ui.grabmouse(this);
+        kg = ui.grabkeys(this);
+        new Opening();
+    }
+
+    public boolean mousedown(MouseDownEvent ev) {
+        if (!anims.isEmpty())
+            return true;
+        if (!ev.c.isect(Coord.z, sz))
+            choose(null);
+        return true;
+    }
+
+    public void uimsg(String msg, Object... args) {
+        if (msg.equals("cancel")) {
+            new Cancel();
+            mg.remove();
+            kg.remove();
+        } else if (msg.equals("act")) {
+            new Chosen(opts[(Integer) args[0]]);
+            mg.remove();
+            kg.remove();
+        }
+    }
+
     public void draw(GOut g) { super.draw(g, false); }
-    public boolean keydown(KeyDownEvent ev) { /* Unchanged */ }
+
+    public boolean keydown(KeyDownEvent ev) {
+        if (!anims.isEmpty())
+            return true;
+        int key = ev.code - KeyEvent.VK_1;
+        if ((key >= 0) && (key < opts.length)) {
+            choose(opts[key]);
+            return true;
+        }
+        if (ev.code == KeyEvent.VK_ESCAPE) {
+            choose(null);
+            return true;
+        }
+        return false;
+    }
 
     public void choose(Petal option) {
         if (option != null) {
             if ("Info".equals(option.name) && sourceItem != null) {
-                sourceItem.showWikiInfo(); // Assumes showWikiInfo is public
+                sourceItem.showWikiInfo();
             } else {
                 if (AutoRepeatFlowerMenuScript.option != null) {
                     AutoRepeatFlowerMenuScript.option = option.name;
@@ -170,10 +226,35 @@ public class FlowerMenu extends Widget {
     }
 
     public static void setNextSelection(String name) { nextAutoSel = name; }
-    public void tryAutoSelect() { /* Unchanged */ }
-    public Petal getPetalFromName(String name) { /* Unchanged */ }
-    public static void updateValue(String name, boolean value) { /* Unchanged */ }
-    private void addOptionsToDatabase(String[] options) { /* Unchanged */ }
+    public void tryAutoSelect() {
+        if (nextAutoSel != null) {
+            for (Petal petal : opts) {
+                if (petal.name.equals(nextAutoSel)) {
+                    choose(petal);
+                    nextAutoSel = null;
+                    return;
+                }
+            }
+        }
+    }
+
+    public Petal getPetalFromName(String name) {
+        for (Petal petal : opts) {
+            if (petal.name.equals(name))
+                return petal;
+        }
+        return null;
+    }
+
+    public static void updateValue(String name, boolean value) {
+        autoSelectMap.put(name, value);
+        updateDbValue(name, value);
+    }
+
+    private void addOptionsToDatabase(String[] options) {
+        for (String option : options)
+            checkAndInsertFlowerMenuOption(option);
+    }
 
     public static void updateDbValue(String flowerMenuOptionName, boolean newValue) {
         try (java.sql.Connection conn = DriverManager.getConnection(DATABASE)) {
@@ -207,8 +288,40 @@ public class FlowerMenu extends Widget {
         }
     }
 
-    public static void fillAutoChooseMap() { /* Unchanged */ }
-    public static void createDatabaseIfNotExist() throws SQLException { /* Unchanged */ }
-    private static void createSchemaElementIfNotExist(java.sql.Connection conn, String name, String definitions, String type) throws SQLException { /* Unchanged */ }
-    private static boolean schemaElementExists(java.sql.Connection conn, String name, String type) throws SQLException { /* Unchanged */ }
+    public static void fillAutoChooseMap() {
+        try (java.sql.Connection conn = DriverManager.getConnection(DATABASE)) {
+            String sql = "SELECT name, auto_use FROM flower_menu_options";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                ResultSet rs = pstmt.executeQuery();
+                while (rs.next()) {
+                    String name = rs.getString("name");
+                    boolean autoUse = rs.getBoolean("auto_use");
+                    autoSelectMap.put(name, autoUse);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void createDatabaseIfNotExist() throws SQLException {
+        try (java.sql.Connection conn = DriverManager.getConnection(DATABASE)) {
+            createSchemaElementIfNotExist(conn, "flower_menu_options", "(name TEXT PRIMARY KEY NOT NULL, auto_use INTEGER DEFAULT 0)", "table");
+        }
+    }
+
+    private static void createSchemaElementIfNotExist(java.sql.Connection conn, String name, String definitions, String type) throws SQLException {
+        if (!schemaElementExists(conn, name, type)) {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("CREATE TABLE " + name + " " + definitions);
+            }
+        }
+    }
+
+    private static boolean schemaElementExists(java.sql.Connection conn, String name, String type) throws SQLException {
+        DatabaseMetaData meta = conn.getMetaData();
+        try (ResultSet rs = meta.getTables(null, null, name, new String[]{type.toUpperCase()})) {
+            return rs.next();
+        }
+    }
 }
