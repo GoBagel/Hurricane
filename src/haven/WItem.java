@@ -119,9 +119,9 @@ public class WItem extends Widget implements DTarget {
         spr.draw(g);
         QBuff qual = item.getQBuff();
         if (qual != null && qual.q >= 0) {
-            Tex tex = qual.qtex();
+            Tex tex = qual.tex;
             g.image(tex, Coord.z);
-            curs = qcursor.loadwait();
+            curs = Resource.local().load("ui/qcursor").loadwait();
         } else {
             curs = null;
         }
@@ -162,7 +162,7 @@ public class WItem extends Widget implements DTarget {
                 g.chcolor();
             }
         } else {
-            g.image(missing.loadwait().layer(Resource.imgc).tex(), Coord.z, sz);
+            g.image(Resource.local().load("gfx/invobjs/missing").loadwait().layer(Resource.imgc).tex(), Coord.z, sz);
         }
     }
 
