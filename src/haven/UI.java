@@ -1119,7 +1119,7 @@ public class UI {
         msg.addint32(item.wdgid());
         msg.addcoord(c);
         msg.addint32(modflags);
-        sess.sendmsg(msg);
+        sess.send(new PMessage(0, msg.data())); // Convert MessageBuf to PMessage
     }
 
     public void xfer(GItem item, Coord c, int count) {
@@ -1128,7 +1128,7 @@ public class UI {
         msg.addint32(item.wdgid());
         msg.addcoord(c);
         msg.addint32(count);
-        sess.sendmsg(msg);
+        sess.send(new PMessage(0, msg.data()));
     }
 
     public void drop(GItem item, Coord c, int count) {
@@ -1137,7 +1137,7 @@ public class UI {
         msg.addint32(item.wdgid());
         msg.addcoord(c);
         msg.addint32(count);
-        sess.sendmsg(msg);
+        sess.send(new PMessage(0, msg.data()));
     }
 
     public void take(GItem item, Coord c) {
@@ -1145,7 +1145,7 @@ public class UI {
         msg.addint16((short)3); // Type 3 for take
         msg.addint32(item.wdgid());
         msg.addcoord(c);
-        sess.sendmsg(msg);
+        sess.send(new PMessage(0, msg.data()));
     }
 
     public void itemact(GItem item, int modflags) {
@@ -1153,13 +1153,13 @@ public class UI {
         msg.addint16((short)4); // Type 4 for itemact
         msg.addint32(item.wdgid());
         msg.addint32(modflags);
-        sess.sendmsg(msg);
+        sess.send(new PMessage(0, msg.data()));
     }
 
     public void ttupdate(GItem item) {
         MessageBuf msg = new MessageBuf();
         msg.addint16((short)5); // Type 5 for ttupdate
         msg.addint32(item.wdgid());
-        sess.sendmsg(msg);
+        sess.send(new PMessage(0, msg.data()));
     }
 }
