@@ -119,9 +119,9 @@ public class WItem extends Widget implements DTarget {
         spr.draw(g);
         QBuff qual = item.getQBuff();
         if (qual != null && qual.q >= 0) {
-            Tex tex = qual.tex;
+            Tex tex = qual.qtex;
             g.image(tex, Coord.z);
-            curs = Resource.local().load("ui/qcursor").loadwait();
+            curs = Resource.remote().loadwait("ui/qcursor");
         } else {
             curs = null;
         }
@@ -138,7 +138,7 @@ public class WItem extends Widget implements DTarget {
             }
             if (item.meter > 0) {
                 double lastMeterUpdate = (System.currentTimeMillis() - item.meterUpdated) / 1000.0;
-                double meterFadeoutTime = OptWnd.itemMeterFadeoutTimeSlider.val;
+                double meterFadeoutTime = 2.0; // Hardcoded default (2 seconds)
                 if (lastMeterUpdate < meterFadeoutTime || meterFadeoutTime == 0) {
                     double a = item.meter / 100.0;
                     if (lastMeterUpdate >= 0 && meterFadeoutTime > 0) {
@@ -162,7 +162,7 @@ public class WItem extends Widget implements DTarget {
                 g.chcolor();
             }
         } else {
-            g.image(Resource.local().load("gfx/invobjs/missing").loadwait().layer(Resource.imgc).tex(), Coord.z, sz);
+            g.image(Resource.remote().loadwait("gfx/invobjs/missing").layer(Resource.imgc).tex(), Coord.z, sz);
         }
     }
 
