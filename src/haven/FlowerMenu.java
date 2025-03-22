@@ -1,8 +1,8 @@
 package haven;
 
 import haven.automated.AutoRepeatFlowerMenuScript;
-
 import java.awt.Color;
+import java.awt.event.KeyEvent;
 import java.sql.*;
 import java.util.Arrays;
 import java.util.Map;
@@ -166,7 +166,7 @@ public class FlowerMenu extends Widget {
     }
 
     protected void added() {
-        if (c.isZero())
+        if (c.equals(Coord.z))
             c = parent.sz.div(2).sub(sz.div(2));
         mg = ui.grabmouse(this);
         kg = ui.grabkeys(this);

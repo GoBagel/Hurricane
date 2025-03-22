@@ -1115,51 +1115,51 @@ public class UI {
     public void interact(GItem item, Coord c, int modflags, WItem source) {
         lastInteractSource = source;
         MessageBuf msg = new MessageBuf();
-        msg.addint16(0); // Type 0 for iact
+        msg.addint16((short)0); // Type 0 for iact
         msg.addint32(item.wdgid());
         msg.addcoord(c);
         msg.addint32(modflags);
-        sess.send(msg);
+        sess.sendmsg(msg);
     }
 
     public void xfer(GItem item, Coord c, int count) {
         MessageBuf msg = new MessageBuf();
-        msg.addint16(1); // Type 1 for transfer
+        msg.addint16((short)1); // Type 1 for transfer
         msg.addint32(item.wdgid());
         msg.addcoord(c);
         msg.addint32(count);
-        sess.send(msg);
+        sess.sendmsg(msg);
     }
 
     public void drop(GItem item, Coord c, int count) {
         MessageBuf msg = new MessageBuf();
-        msg.addint16(2); // Type 2 for drop
+        msg.addint16((short)2); // Type 2 for drop
         msg.addint32(item.wdgid());
         msg.addcoord(c);
         msg.addint32(count);
-        sess.send(msg);
+        sess.sendmsg(msg);
     }
 
     public void take(GItem item, Coord c) {
         MessageBuf msg = new MessageBuf();
-        msg.addint16(3); // Type 3 for take
+        msg.addint16((short)3); // Type 3 for take
         msg.addint32(item.wdgid());
         msg.addcoord(c);
-        sess.send(msg);
+        sess.sendmsg(msg);
     }
 
     public void itemact(GItem item, int modflags) {
         MessageBuf msg = new MessageBuf();
-        msg.addint16(4); // Type 4 for itemact
+        msg.addint16((short)4); // Type 4 for itemact
         msg.addint32(item.wdgid());
         msg.addint32(modflags);
-        sess.send(msg);
+        sess.sendmsg(msg);
     }
 
     public void ttupdate(GItem item) {
         MessageBuf msg = new MessageBuf();
-        msg.addint16(5); // Type 5 for ttupdate
+        msg.addint16((short)5); // Type 5 for ttupdate
         msg.addint32(item.wdgid());
-        sess.send(msg);
+        sess.sendmsg(msg);
     }
 }

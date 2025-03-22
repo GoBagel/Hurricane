@@ -1,11 +1,11 @@
 package haven;
 
 import java.util.*;
-import java.util.function.Consumer; // Added import for Consumer
+import java.util.function.Consumer;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
-
 import haven.automated.AutoRepeatFlowerMenuScript;
+import haven.res.ui.tt.q.qbuff.QBuff;
 
 public class WItem extends Widget implements DTarget {
     public static final Resource.Named missing = Resource.local().load("gfx/invobjs/missing");
@@ -46,7 +46,7 @@ public class WItem extends Widget implements DTarget {
             items.clear();
             for (Widget ch = inv.child; ch != null; ch = ch.next) {
                 if (ch instanceof WItem)
-                    items.add((WItem) ch);
+                    items.add((WItem)ch);
             }
             resize(inv.sz);
         }
@@ -54,7 +54,7 @@ public class WItem extends Widget implements DTarget {
         public void addchild(Widget child, Object... args) {
             inv.addchild(child, args);
             if (child instanceof WItem) {
-                WItem itm = (WItem) child;
+                WItem itm = (WItem)child;
                 items.add(itm);
                 added.accept(itm);
             }
@@ -70,13 +70,11 @@ public class WItem extends Widget implements DTarget {
 
         public void tick(double dt) {
             super.tick(dt);
-            if (contents != null)
-                contents.tick(dt);
         }
     }
 
     public void additem(WItem itm) {
-        synchronized (itm) {
+        synchronized(itm) {
             itm.info = null;
         }
     }
@@ -109,27 +107,21 @@ public class WItem extends Widget implements DTarget {
 
     public void tick(double dt) {
         super.tick(dt);
-        if (item.contents != null) {
-            if (contents == null) {
-                add(new ItemContents(this, item.contents));
-            }
-        } else {
-            if (contents != null) {
-                contents.destroy();
-            }
+        if (item.contents != null && contents == null) {
+            add(new ItemContents(this, item.contents));
+        } else if (item.contents == null && contents != null) {
+            contents.destroy();
         }
     }
 
     private static final Resource.Named qcursor = Resource.local().load("ui/qcursor");
     public void drawmain(GOut g, GSprite spr) {
         spr.draw(g);
-        QBuff qual = item.getQBuff();
-        if (qual != null) {
-            if (qual.q >= 0) {
-                Tex tex = qual.qtex;
-                g.image(tex, Coord.z);
-            }
-            curs = qcursor;
+        QBuff qual = item.quality();
+        if (qual != null && qual.q >= 0) {
+            Tex tex = qual.qtex;
+            g.image(tex, Coord.z);
+            curs = qcursor.loadwait();
         } else {
             curs = null;
         }
@@ -151,26 +143,26 @@ public class WItem extends Widget implements DTarget {
                     double a = item.meter / 100.0;
                     if (lastMeterUpdate >= 0 && meterFadeoutTime > 0) {
                         double fade = Math.max(0, (meterFadeoutTime - lastMeterUpdate) / meterFadeoutTime);
-                        g.chcolor(255, 255, 255, (int) (255 * fade));
+                        g.chcolor(255, 255, 255, (int)(255 * fade));
                     }
                     double dx = sz.x * a;
                     g.chcolor(0, 0, 0, 96);
-                    g.frect(new Coord(0, sz.y - 3), new Coord((int) dx + 1, 3));
-                    g.chcolor(255 - (int) (a * 255), (int) (a * 255), 0, 128);
-                    g.frect(new Coord(0, sz.y - 2), new Coord((int) dx, 2));
+                    g.frect(new Coord(0, sz.y - 3), new Coord((int)dx + 1, 3));
+                    g.chcolor(255 - (int)(a * 255), (int)(a * 255), 0, 128);
+                    g.frect(new Coord(0, sz.y - 2), new Coord((int)dx, 2));
                     g.chcolor();
                 }
             }
             if (item.studytime > 0) {
                 double m = item.studytime / (100.0 * 3600);
                 g.chcolor(0, 0, 0, 96);
-                g.frect(new Coord(0, 0), new Coord((int) (sz.x * m) + 1, 3));
-                g.chcolor(255 - (int) (m * 255), (int) (m * 255), 0, 128);
-                g.frect(new Coord(0, 1), new Coord((int) (sz.x * m), 2));
+                g.frect(new Coord(0, 0), new Coord((int)(sz.x * m) + 1, 3));
+                g.chcolor(255 - (int)(m * 255), (int)(m * 255), 0, 128);
+                g.frect(new Coord(0, 1), new Coord((int)(sz.x * m), 2));
                 g.chcolor();
             }
         } else {
-            g.image(missing.loadwait().layer(Resource.imgc).tex(), Coord.z, sz);
+            g.image(Resource.local().loadwait("gfx/invobjs/missing").layer(Resource.imgc).tex(), Coord.z, sz);
         }
     }
 
@@ -237,13 +229,8 @@ public class WItem extends Widget implements DTarget {
         g.chcolor();
     }
 
-    public boolean drop(WItem target, Coord cc) {
-        return false;
-    }
-
-    public boolean iteminteract(WItem target, Coord cc) {
-        return false;
-    }
+    public boolean drop(WItem target, Coord cc) { return false; }
+    public boolean iteminteract(WItem target, Coord cc) { return false; }
 
     public Object tooltip(Coord c, Widget prev) {
         try {
